@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,900;1,900&family=JetBrains+Mono&display=swap');
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-display: "Anton", sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-vibrant-orange: #FF6321;
+  --color-vibrant-green: #064E3B;
+  --color-vibrant-yellow: #FFD700;
+  --color-vibrant-cream: #fdfaf6;
+  --color-vibrant-black: #1a1a1a;
+}
+
+:root {
+  background-color: var(--color-vibrant-cream);
+  color: var(--color-vibrant-black);
+}
+
+@layer base {
+  body {
+    @apply font-sans;
+  }
+}
+
+/* Custom Map Styles */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 1rem;
+  z-index: 1;
+}
+
+.glowing-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.marker-inner {
+  width: 12px;
+  height: 12px;
+  background: var(--color-vibrant-orange);
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--color-vibrant-orange), 0 0 20px var(--color-vibrant-orange);
+  animation: pulse-glow 2s infinite;
+}
+
+@keyframes pulse-glow {
+  0% { transform: scale(1); box-shadow: 0 0 10px var(--color-vibrant-orange); }
+  50% { transform: scale(1.5); box-shadow: 0 0 20px var(--color-vibrant-orange), 0 0 30px var(--color-vibrant-orange); }
+  100% { transform: scale(1); box-shadow: 0 0 10px var(--color-vibrant-orange); }
+}
+
+.route-polyline {
+  stroke-dasharray: 10, 10;
+  stroke-dashoffset: 1000;
+  animation: dash 30s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.brutalist-card {
+  @apply bg-white border-2 border-vibrant-black shadow-[4px_4px_0px_#1a1a1a] rounded-2xl;
+}
+
+.brutalist-button {
+  @apply bg-vibrant-orange text-white px-6 py-3 rounded-full font-black uppercase text-sm shadow-[4px_4px_0px_#1a1a1a] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none;
+}
+
+.brutalist-button-black {
+  @apply bg-vibrant-black text-white px-6 py-3 rounded-full font-black uppercase text-sm shadow-[4px_4px_0px_#ccc] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none;
+}
+
+.markdown-body h1 { @apply text-4xl font-display uppercase tracking-tight mb-4; }
+.markdown-body h2 { @apply text-2xl font-serif italic mb-2; }
+.markdown-body p { @apply mb-4 leading-relaxed opacity-80; }

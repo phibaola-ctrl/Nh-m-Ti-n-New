@@ -1,0 +1,8 @@
+{
+  "name": "NomadMap AI",
+  "description": "Kế hoạch du lịch AI cao cấp sử dụng công nghệ bản đồ miễn phí và mã nguồn mở như Leaflet và OpenStreetMap.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
