@@ -52,3 +52,10 @@ export interface TravelItinerary {
   hiddenGems: Recommendation[];
   socialSpots: Recommendation[];
 }
+
+export type ChatRole = 'user' | 'model';
+
+export interface ChatMessage {
+  role: ChatRole;
+  text: string;
+}

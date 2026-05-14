@@ -1,8 +1,113 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { useState, useMemo } from 'react';
 import { TravelItinerary, DayPlan, Activity, Recommendation } from '../types';
-import { MapPin, Clock, DollarSign, Lightbulb, Coffee, Hotel, Truck, Compass, Instagram, ChevronLeft, Sparkles, Filter, X } from 'lucide-react';
+import { MapPin, Clock, DollarSign, Lightbulb, Coffee, Hotel, Truck, Compass, Instagram, ChevronLeft, Sparkles, Filter, X, Download, Printer, Banknote, Star, Quote } from 'lucide-react';
 import TravelMap from './Map/TravelMap';
+
+const EXCHANGE_RATES: Record<string, number> = {
+  'USD': 25400, '$': 25400,
+  'KRW': 18.5, '₩': 18.5,
+  'JPY': 165, '¥': 165,
+  'EUR': 27500, '€': 27500,
+  'THB': 700, '฿': 700,
+  'SGD': 19000,
+  'TWD': 780,
+  'CNY': 3500,
+  'HKD': 3250,
+  'GBP': 32000, '£': 32000,
+  'AUD': 16800,
+  'CAD': 18600,
+  'IDR': 1.6,
+  'MYR': 5400,
+  'PHP': 440,
+};
+
+const convertToVND = (costStr: string) => {
+  if (!costStr) return 'Miễn phí';
+  const lower = costStr.toLowerCase();
+  
+  // Quick check for free/zero
+  if (
+    lower.includes('miễn phí') || 
+    lower.includes('free') || 
+    (lower.match(/\b0\b/) && costStr.length < 10)
+  ) {
+    return 'Miễn phí';
+  }
+  
+  const upperCost = costStr.toUpperCase();
+  
+  // Sort keys by length descending to match longer strings first (e.g. 'THB' before 'B')
+  const keys = Object.keys(EXCHANGE_RATES).sort((a, b) => b.length - a.length);
+  
+  let selectedRate = 0;
+  let detectedSymbol = '';
+
+  for (const symbol of keys) {
+    if (upperCost.includes(symbol)) {
+      selectedRate = EXCHANGE_RATES[symbol];
+      detectedSymbol = symbol;
+      break;
+    }
+  }
+  
+  // If no international rate found, or already explicitly in VND, return as is
+  if (selectedRate === 0 || upperCost.includes('VND') || upperCost.includes('VNĐ')) {
+    return costStr;
+  }
+  
+  const formatVND = (val: number) => {
+    return new Intl.NumberFormat('vi-VN', { 
+      style: 'currency', 
+      currency: 'VND', 
+      maximumFractionDigits: 0 
+    }).format(val);
+  };
+
+  // Improved regex: handles numbers with commas/dots as separators
+  // Matches "1,200", "50.5", "1000", etc.
+  let result = costStr;
+  
+  // Replacement logic: Find numbers and replace with converted VND
+  // We use a regex that looks specifically for patterns that look like prices
+  result = result.replace(/(\d[\d,.]*)/g, (match) => {
+    // Clean the number string for parsing
+    // If it ends with a dot or comma, we should keep that punctuation as part of the text
+    let punctuation = '';
+    let cleanMatch = match;
+    if (match.endsWith('.') || match.endsWith(',')) {
+      punctuation = match.slice(-1);
+      cleanMatch = match.slice(0, -1);
+    }
+
+    // Heuristic: if match is just a small number like 1-31, it might be a date part, but in costStr it's unlikely
+    // We replace it if it feels like a value
+    const valStr = cleanMatch.replace(/,/g, '');
+    const num = parseFloat(valStr);
+    
+    if (isNaN(num)) return match;
+    
+    // Only convert if it's not a year (very loose check)
+    if (num > 1900 && num < 2100 && !costStr.includes('/')) {
+       // Might be a year, potentially skip? For now, we assume all numbers in costStr are prices.
+    }
+
+    return formatVND(num * selectedRate) + punctuation;
+  });
+
+  // Cleanup original symbols and currency codes
+  // We escape symbols for regex safety
+  for (const symbol of keys) {
+    const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b|${escaped}`, 'gi');
+    result = result.replace(regex, '');
+  }
+
+  // Final cleanup of extra spaces or leftover artifacts
+  result = result.replace(/\s+/g, ' ').trim();
+  
+  return result || costStr;
+};
 
 interface ItineraryDisplayProps {
   itinerary: TravelItinerary;
@@ -15,6 +120,9 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
   const [activeDay, setActiveDay] = useState(1);
   const [activeType, setActiveType] = useState<ActivityTypeFilter>('All');
   const [selectedLocation, setSelectedLocation] = useState<any | null>(null);
+  const [isVND, setIsVND] = useState(false);
+
+  const displayCost = (cost: string) => isVND ? convertToVND(cost) : cost;
 
   const filteredDays = useMemo(() => {
     return itinerary.days.map(day => ({
@@ -26,10 +134,39 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
     })).filter(day => day.activities.length > 0);
   }, [itinerary.days, activeType]);
 
+  const handleExportJSON = () => {
+    const dataStr = JSON.stringify(itinerary, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `Lich_trinh_${itinerary.overview.destination.replace(/\s+/g, '_')}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="min-h-screen bg-vibrant-cream overflow-x-hidden">
+    <div className="min-h-screen bg-vibrant-cream overflow-x-hidden print:bg-white print:p-0">
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .print-break-inside-avoid { break-inside: avoid; }
+          .print-grid { display: block !important; }
+          header { position: absolute !important; }
+          main { display: block !important; height: auto !important; padding-top: 2rem !important; }
+          section { width: 100% !important; height: auto !important; overflow: visible !important; position: static !important; }
+          .brutalist-card { border-color: #000 !important; box-shadow: none !important; }
+          .printable-content { padding: 2rem !important; }
+        }
+      `}</style>
+
       {/* HEADER NAVIGATION */}
-      <header className="fixed top-0 inset-x-0 z-[100] px-6 py-4 bg-white/80 backdrop-blur-md border-b-2 border-vibrant-black shadow-sm">
+      <header className="fixed top-0 inset-x-0 z-[100] px-6 py-4 bg-white/80 backdrop-blur-md border-b-2 border-vibrant-black shadow-sm no-print">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
@@ -61,6 +198,31 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
               </button>
             ))}
           </div>
+
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsVND(!isVND)}
+              title={isVND ? "Xem giá gốc" : "Đổi sang VNĐ"}
+              className={`flex items-center gap-2 px-4 py-3 border-2 border-vibrant-black rounded-xl transition-all shadow-[2px_2px_0px_#1a1a1a] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 ${isVND ? 'bg-vibrant-green text-white' : 'bg-white text-vibrant-black'}`}
+            >
+              <Banknote className="w-5 h-5" />
+              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isVND ? 'VNĐ' : 'Gốc'}</span>
+            </button>
+            <button 
+              onClick={handleExportJSON}
+              title="Tải xuống JSON"
+              className="p-3 bg-vibrant-yellow border-2 border-vibrant-black rounded-xl transition-all shadow-[2px_2px_0px_#1a1a1a] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={handlePrint}
+              title="Lưu PDF / In"
+              className="p-3 bg-white border-2 border-vibrant-black rounded-xl transition-all shadow-[2px_2px_0px_#1a1a1a] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"
+            >
+              <Printer className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -68,14 +230,14 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
       <main className="flex flex-col lg:flex-row h-screen pt-24">
         
         {/* LEFT COLUMN: ITINERARY FLOW (SCROLLABLE) */}
-        <section className="w-full lg:w-[40%] xl:w-[35%] h-full overflow-y-auto p-6 space-y-12 pb-32 no-scrollbar">
+        <section className="w-full lg:w-[40%] xl:w-[35%] h-full overflow-y-auto p-6 space-y-12 pb-32 no-scrollbar printable-content">
           <div className="space-y-6">
             <div className="flex items-center justify-between">
                <h2 className="text-3xl font-display uppercase tracking-widest bg-vibrant-yellow px-4 py-2 border-2 border-vibrant-black rotate-[-1deg] shadow-[4px_4px_0px_#1a1a1a]">Kế Hoạch Tổng Thể</h2>
             </div>
 
             {/* FILTERS */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 no-print">
               {(['All', 'Morning', 'Afternoon', 'Evening', 'Nightlife'] as ActivityTypeFilter[]).map(type => (
                 <button
                   key={type}
@@ -86,7 +248,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                       : 'bg-white border-vibrant-black/10 hover:border-vibrant-black hover:shadow-sm'
                   }`}
                 >
-                  {type}
+                  {type === 'All' ? 'Tất cả' : type === 'Morning' ? 'Sáng' : type === 'Afternoon' ? 'Chiều' : type === 'Evening' ? 'Tối' : 'Đêm'}
                 </button>
               ))}
             </div>
@@ -94,20 +256,23 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
 
           {/* DAY SCROLL */}
           <div className="space-y-16">
-            {filteredDays.filter(d => d.day === activeDay).map((day) => (
-              <DayBlock 
-                key={day.day} 
-                day={day} 
-                onSelect={setSelectedLocation}
-              />
+            {filteredDays.filter(d => (activeDay === d.day || typeof window !== 'undefined' && window.matchMedia('print').matches)).map((day) => (
+              <div key={day.day} className="print:break-inside-avoid print:mb-12">
+                <DayBlock 
+                  day={day} 
+                  onSelect={setSelectedLocation}
+                  isVND={isVND}
+                  displayCost={displayCost}
+                />
+              </div>
             ))}
           </div>
 
           {/* RECOMMENDATIONS */}
-          <div className="pt-12 border-t-2 border-vibrant-black/5 space-y-8">
+          <div className="pt-12 border-t-2 border-vibrant-black/5 space-y-8 print:break-inside-avoid">
              <div className="brutalist-card p-6 bg-vibrant-green text-white">
                 <h3 className="text-2xl font-display uppercase mb-4 italic">Điểm nóng <span className="text-vibrant-yellow font-sans">Ẩm thực</span></h3>
-                <div className="space-y-4">
+                <div className="space-y-4 print:grid print:grid-cols-2 print:gap-4">
                   {itinerary.foodAndCafes.map(food => (
                     <div 
                       key={food.name} 
@@ -134,7 +299,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
         </section>
 
         {/* RIGHT COLUMN: INTERACTIVE MAP (STICKY) */}
-        <section className="w-full lg:w-[60%] xl:w-[65%] h-[50vh] lg:h-full p-6 relative">
+        <section className="w-full lg:w-[60%] xl:w-[65%] h-[50vh] lg:h-full p-6 relative no-print">
           <TravelMap 
             itinerary={itinerary} 
             activeDay={activeDay} 
@@ -214,7 +379,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                         <DollarSign className="w-3 h-3" />
                         <p className="text-[8px] font-black uppercase">Chi Phí</p>
                       </div>
-                      <p className="text-sm font-black text-vibrant-black">{selectedLocation.cost || selectedLocation.priceRange || 'Miễn Phí'}</p>
+                      <p className="text-sm font-black text-vibrant-black">{displayCost(selectedLocation.cost || selectedLocation.priceRange || 'Miễn Phí')}</p>
                     </div>
                     <div className="bg-white border-2 border-vibrant-black/10 p-4 rounded-2xl">
                       <div className="flex items-center gap-2 mb-1 opacity-50">
@@ -256,6 +421,87 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                     </div>
                   )}
 
+                  {/* Ratings & Reviews */}
+                  <div className="space-y-6 pt-6 border-t-2 border-vibrant-black/5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2 text-vibrant-black">
+                        <Star className="w-4 h-4 text-vibrant-yellow fill-vibrant-yellow" /> Đánh giá & Nhận xét
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xl font-display text-vibrant-black">4.8</span>
+                        <span className="text-[10px] font-black text-vibrant-black/40">/ 5</span>
+                      </div>
+                    </div>
+
+                    {/* Rating Breakdown */}
+                    <div className="grid grid-cols-1 gap-2 bg-vibrant-cream/50 p-4 rounded-2xl border-2 border-vibrant-black/5">
+                      {[5, 4, 3, 2, 1].map((star) => (
+                        <div key={star} className="flex items-center gap-3">
+                          <div className="flex items-center gap-1 w-8">
+                            <span className="text-[10px] font-black">{star}</span>
+                            <Star className="w-2.5 h-2.5 text-vibrant-yellow fill-vibrant-yellow" />
+                          </div>
+                          <div className="flex-1 h-2 bg-vibrant-black/5 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${star === 5 ? 75 : star === 4 ? 15 : star === 3 ? 7 : 3}%` }}
+                              className="h-full bg-vibrant-yellow"
+                            />
+                          </div>
+                          <span className="text-[8px] font-black opacity-30 w-6 text-right">{star === 5 ? '75%' : star === 4 ? '15%' : '5%'}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-4">
+                      {[
+                        { 
+                          user: "Minh Anh", 
+                          avatar: "MA",
+                          rating: 5, 
+                          comment: "Địa điểm tuyệt vời! Không gian cực kỳ ấn tượng và phục vụ rất chu đáo. Chắc chắn sẽ quay lại.",
+                          date: "2 tuần trước"
+                        },
+                        { 
+                          user: "Hoàng Long", 
+                          avatar: "HL",
+                          rating: 4, 
+                          comment: "Trải nghiệm rất tốt, tuy nhiên hơi đông vào cuối tuần. Gợi ý nên đi vào ngày thường.",
+                          date: "1 tháng trước"
+                        }
+                      ].map((review, idx) => (
+                        <div key={idx} className="bg-white border-2 border-vibrant-black/10 p-5 rounded-2xl space-y-3 shadow-sm hover:border-vibrant-black/20 transition-colors">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-vibrant-orange flex items-center justify-center text-white text-xs font-black shadow-[3px_3px_0px_#1a1a1a]">
+                                {review.avatar}
+                              </div>
+                              <div>
+                                <p className="text-sm font-black text-vibrant-black mb-0.5">{review.user}</p>
+                                <div className="flex gap-1">
+                                  {[...Array(5)].map((_, i) => (
+                                    <Star key={i} className={`w-3 h-3 ${i < review.rating ? 'text-vibrant-yellow fill-vibrant-yellow' : 'text-vibrant-black/10'}`} />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-[8px] font-black uppercase text-vibrant-black/30 tracking-widest">{review.date}</span>
+                          </div>
+                          <div className="flex gap-3">
+                            <Quote className="w-4 h-4 text-vibrant-orange/30 shrink-0 mt-1" />
+                            <p className="text-sm font-medium text-vibrant-black/70 italic leading-relaxed">
+                              {review.comment}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button className="w-full py-3 border-2 border-dashed border-vibrant-black/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-vibrant-black/40 hover:border-vibrant-orange hover:text-vibrant-orange hover:bg-vibrant-orange/5 transition-all">
+                      Để lại đánh giá của bạn
+                    </button>
+                  </div>
+
                   <button 
                     className="w-full bg-vibrant-black text-white py-5 rounded-2xl font-black uppercase text-sm shadow-[8px_8px_0px_#FF6321] hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-3 mt-4"
                     onClick={() => {
@@ -277,7 +523,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
   );
 }
 
-function DayBlock({ day, onSelect }: { day: DayPlan, onSelect: (loc: any) => void }) {
+function DayBlock({ day, onSelect, isVND, displayCost }: { day: DayPlan, onSelect: (loc: any) => void, isVND: boolean, displayCost: (c: string) => string }) {
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-4">
@@ -310,8 +556,8 @@ function DayBlock({ day, onSelect }: { day: DayPlan, onSelect: (loc: any) => voi
                 <h4 className="text-xl font-bold leading-tight group-hover:text-vibrant-orange transition-colors">{activity.name}</h4>
                 <p className="text-xs opacity-60 line-clamp-2 leading-tight">{activity.description}</p>
                 <div className="pt-2 flex items-center gap-3">
-                   <span className="px-2 py-0.5 rounded-md bg-vibrant-black text-white text-[9px] font-black uppercase">
-                     {activity.cost}
+                   <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase transition-colors ${isVND ? 'bg-vibrant-green text-white' : 'bg-vibrant-black text-white'}`}>
+                     {displayCost(activity.cost)}
                    </span>
                    <span className="text-[10px] font-bold text-vibrant-black flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                      Khám phá <ChevronLeft className="w-3 h-3 rotate-180" />

@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateItinerary } from './services/gemini';
 import { TravelItinerary } from './types';
 import TravelForm from './components/TravelForm';
 import ItineraryDisplay from './components/ItineraryDisplay';
-import { Sparkles, MapPin, Wind, History } from 'lucide-react';
+import ChatAssistant from './components/ChatAssistant';
+import { Sparkles, MapPin, Wind, History, Upload } from 'lucide-react';
 
 export default function App() {
   const [itinerary, setItinerary] = useState<TravelItinerary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const heroImages = [
     "https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&q=80&w=2000",
@@ -20,6 +22,12 @@ export default function App() {
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [hasSaved, setHasSaved] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const showNotification = (message: string) => {
+    setNotification(message);
+    setTimeout(() => setNotification(null), 3000);
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -39,11 +47,43 @@ export default function App() {
       try {
         setItinerary(JSON.parse(saved));
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        showNotification("Lịch trình đã lưu đã được tải!");
       } catch (e) {
         console.error("Failed to parse saved itinerary", e);
         localStorage.removeItem('saved_itinerary');
         setHasSaved(false);
       }
+    }
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          const importedData = JSON.parse(content);
+          // Simple validation check
+          if (importedData.overview && importedData.days) {
+            setItinerary(importedData);
+            localStorage.setItem('saved_itinerary', content);
+            setHasSaved(true);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showNotification("Nhập lịch trình thành công!");
+          } else {
+            setError("Tệp tin không đúng định dạng lịch trình.");
+          }
+        } catch (err) {
+          console.error("Failed to import itinerary", err);
+          setError("Lỗi khi đọc tệp tin.");
+        }
+      };
+      reader.readAsText(file);
     }
   };
 
@@ -53,6 +93,10 @@ export default function App() {
     budget: string;
     travelStyle: string;
     interests: string[];
+    dietaryPreferences?: string[];
+    preferredCuisines?: string[];
+    preferredAirlines?: string;
+    preferredFlightTime?: string;
   }) => {
     try {
       setLoading(true);
@@ -62,12 +106,17 @@ export default function App() {
         formData.duration,
         formData.budget,
         formData.travelStyle,
-        formData.interests
+        formData.interests,
+        formData.dietaryPreferences,
+        formData.preferredCuisines,
+        formData.preferredAirlines,
+        formData.preferredFlightTime
       );
       setItinerary(data);
       localStorage.setItem('saved_itinerary', JSON.stringify(data));
       setHasSaved(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      showNotification("Lịch trình mới đã sẵn sàng!");
     } catch (err) {
       console.error(err);
       setError("Đồng bộ hóa thất bại. Vui lòng thử một điểm đến khác.");
@@ -78,6 +127,22 @@ export default function App() {
 
   return (
     <main className="min-h-screen bg-vibrant-cream text-vibrant-black selection:bg-vibrant-yellow selection:text-vibrant-black">
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ y: -100, x: '-50%', opacity: 0 }}
+            animate={{ y: 24, x: '-50%', opacity: 1 }}
+            exit={{ y: -100, x: '-50%', opacity: 0 }}
+            className="fixed top-0 left-1/2 z-[3000] px-6 py-3 bg-vibrant-black text-white border-2 border-white/20 rounded-2xl shadow-[8px_8px_0px_rgba(0,0,0,0.2)] flex items-center gap-3 backdrop-blur-md"
+          >
+            <div className="p-1.5 bg-vibrant-green rounded-lg">
+              <Sparkles className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest">{notification}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence mode="wait">
         {!itinerary ? (
           <motion.div
@@ -87,6 +152,14 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="relative"
           >
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileChange} 
+              accept=".json" 
+              className="hidden" 
+            />
+            
             {/* Landing Hero */}
             <header className="relative h-screen flex flex-col items-center justify-center text-center overflow-hidden p-6 bg-vibrant-black">
                {/* Dynamic Background */}
@@ -143,17 +216,28 @@ export default function App() {
                    transition={{ delay: 0.5 }}
                    className="pt-16 flex flex-col items-center gap-6"
                  >
-                   {hasSaved && (
+                   <div className="flex flex-wrap items-center justify-center gap-4">
+                     {hasSaved && (
+                       <motion.button
+                         whileHover={{ scale: 1.05 }}
+                         whileTap={{ scale: 0.95 }}
+                         onClick={handleLoadSaved}
+                         className="group relative px-6 py-3 bg-white/10 backdrop-blur-md border-2 border-white/20 rounded-xl text-white font-black uppercase text-xs tracking-[0.2em] flex items-center gap-3 transition-colors hover:bg-white/20"
+                       >
+                         <History className="w-4 h-4 text-vibrant-orange" />
+                         Tải Lịch Trình Đã Lưu
+                       </motion.button>
+                     )}
                      <motion.button
                        whileHover={{ scale: 1.05 }}
                        whileTap={{ scale: 0.95 }}
-                       onClick={handleLoadSaved}
-                       className="group relative px-6 py-3 bg-white/10 backdrop-blur-md border-2 border-white/20 rounded-xl text-white font-black uppercase text-xs tracking-[0.2em] flex items-center gap-3 transition-colors hover:bg-white/20"
+                       onClick={handleImportClick}
+                       className="group relative px-6 py-3 bg-vibrant-yellow border-2 border-vibrant-black rounded-xl text-vibrant-black font-black uppercase text-xs tracking-[0.2em] flex items-center gap-3 transition-all shadow-[4px_4px_0px_#1a1a1a] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
                      >
-                       <History className="w-4 h-4 text-vibrant-orange" />
-                       Tải Lịch Trình Đã Lưu
+                       <Upload className="w-4 h-4" />
+                       Nhập Lịch Trình (.JSON)
                      </motion.button>
-                   )}
+                   </div>
 
                    <div className="animate-bounce flex flex-col items-center gap-4">
                      <span className="text-[10px] uppercase tracking-[0.5em] font-black text-white">Cuộn để bắt đầu</span>
@@ -215,6 +299,7 @@ export default function App() {
            </div>
         </div>
       )}
+      <ChatAssistant />
     </main>
   );
 }

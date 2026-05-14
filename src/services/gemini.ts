@@ -6,7 +6,11 @@ export async function generateItinerary(
   duration: number,
   budget: string,
   travelStyle: string,
-  interests: string[]
+  interests: string[],
+  dietaryPreferences?: string[],
+  preferredCuisines?: string[],
+  preferredAirlines?: string,
+  preferredFlightTime?: string
 ): Promise<TravelItinerary> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -14,18 +18,28 @@ export async function generateItinerary(
     You are a World-Class Travel Architect & Nomad AI.
     Create a highly personalized, "cinematic" travel itinerary in VIETNAMESE for:
     Destination: ${destination}
+    Starting Point: Hà Nội, Việt Nam
     Duration: ${duration} days
     Budget: ${budget}
     Style: ${travelStyle}
     Interests: ${interests.join(', ')}
+    ${dietaryPreferences && dietaryPreferences.length > 0 ? `Dietary Restrictions: ${dietaryPreferences.join(', ')}` : ''}
+    ${preferredCuisines && preferredCuisines.length > 0 ? `Preferred Cuisines: ${preferredCuisines.join(', ')}` : ''}
+    ${preferredAirlines ? `Preferred Airlines: ${preferredAirlines}` : ''}
+    ${preferredFlightTime ? `Preferred Flight Times: ${preferredFlightTime}` : ''}
 
     CORE REQUIREMENTS:
     1. Provide estimated Lat/Lng coordinates for EVERY location (activities, hotels, food spots).
-    2. Optimize the travel order of activities within each day to minimize distance.
-    3. Include "Hidden Gems" that are typical for digital nomads or modern adventurers.
-    4. Descriptions must be vivid, premium, and evocative.
+    2. Optimize the travel order of activities within each day to minimize distance and maximize enjoyment.
+    3. Include "Hidden Gems" that are typical for digital nomads or modern adventurers, providing a unique local "vibe".
+    4. Descriptions must be vivid, premium, and evocative, using a storyteller's tone.
     5. ALL text MUST be in VIETNAMESE.
     6. For coordinates: give the most accurate estimated [latitude, longitude].
+    7. In the "transportation" section, specifically consider and include details about the preferred airlines and flight times if provided.
+    8. Logic: Plan each day realistically, considering travel time between spots and typical opening hours.
+    9. Cultural Insight: Mention local etiquette or specific tips for each attraction.
+    10. MANDATORY: The itinerary MUST be planned assuming the user is starting their journey from Hà Nội, Việt Nam. Include flight or transportation details from Hà Nội to the destination in the "transportation" section.
+    11. FOOD PREFERENCES: Strictly adhere to the dietary restrictions and preferred cuisines when suggesting food and cafes.
   `;
 
   const response = await ai.models.generateContent({
