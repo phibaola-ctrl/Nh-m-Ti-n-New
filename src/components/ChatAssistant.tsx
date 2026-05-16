@@ -1,17 +1,30 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageCircle, X, Send, Bot, User, Loader2, Minimize2, Maximize2 } from 'lucide-react';
 import { chatService } from '../services/chatService';
 import { ChatMessage } from '../types';
 import Markdown from 'react-markdown';
+import { translations, Language } from '../lib/translations';
 
-export default function ChatAssistant() {
+interface ChatAssistantProps {
+  language: Language;
+}
+
+export default function ChatAssistant({ language }: ChatAssistantProps) {
+  const t = useMemo(() => translations[language], [language]);
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: 'Xin chào! Tôi là NOMAD. Bạn cần hỗ trợ gì cho chuyến hành trình sắp tới không?' }
-  ]);
+  
+  // Update welcome message when language changes if no other messages exist
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  useEffect(() => {
+    if (messages.length === 0 || (messages.length === 1 && messages[0].role === 'model')) {
+        setMessages([{ role: 'model', text: t.chatWelcome }]);
+    }
+  }, [language, t.chatWelcome]);
+
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -77,7 +90,7 @@ export default function ChatAssistant() {
                   <h3 className="text-white font-display uppercase text-sm tracking-widest">NOMAD</h3>
                   <div className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                    <span className="text-[8px] text-white/60 font-black uppercase">Đang trực tuyến</span>
+                    <span className="text-[8px] text-white/60 font-black uppercase">{t.chatOnline}</span>
                   </div>
                 </div>
               </div>
@@ -142,7 +155,7 @@ export default function ChatAssistant() {
                       type="text"
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
-                      placeholder="Hỏi bất kỳ điều gì..."
+                      placeholder={t.chatPlaceholder}
                       disabled={isLoading}
                       className="w-full bg-vibrant-cream border-2 border-vibrant-black rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-4 focus:ring-vibrant-orange/10 transition-all text-sm font-bold disabled:opacity-50"
                     />
@@ -155,7 +168,7 @@ export default function ChatAssistant() {
                     </button>
                   </div>
                   <p className="text-[8px] font-black uppercase text-center mt-2 text-vibrant-black/30">
-                    Sức mạnh bởi NOMAD AI • Trả lời có thể chứa sai sót
+                    {t.chatPoweredBy}
                   </p>
                 </form>
               </>
@@ -197,7 +210,7 @@ export default function ChatAssistant() {
         {/* Tooltip */}
         {!isOpen && (
           <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-4 py-2 bg-vibrant-black text-white text-[10px] font-black uppercase tracking-widest rounded-lg pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-            Cần trợ giúp?
+            {t.chatHelpTooltip}
           </div>
         )}
       </motion.button>

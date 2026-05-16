@@ -10,15 +10,17 @@ export async function generateItinerary(
   dietaryPreferences?: string[],
   preferredCuisines?: string[],
   preferredAirlines?: string,
-  preferredFlightTime?: string
+  preferredFlightTime?: string,
+  language: 'vi' | 'en' = 'vi'
 ): Promise<TravelItinerary> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+  const languageName = language === 'vi' ? 'VIETNAMESE' : 'ENGLISH';
+
   const prompt = `
     You are a World-Class Travel Architect & Nomad AI.
-    Create a highly personalized, "cinematic" travel itinerary in VIETNAMESE for:
+    Create a highly personalized, "cinematic" travel itinerary for INDEPENDENT TRAVELERS (DU LỊCH TỰ TÚC) in ${languageName} for:
     Destination: ${destination}
-    Starting Point: Hà Nội, Việt Nam
     Duration: ${duration} days
     Budget: ${budget}
     Style: ${travelStyle}
@@ -29,16 +31,16 @@ export async function generateItinerary(
     ${preferredFlightTime ? `Preferred Flight Times: ${preferredFlightTime}` : ''}
 
     CORE REQUIREMENTS:
-    1. Provide estimated Lat/Lng coordinates for EVERY location (activities, hotels, food spots).
-    2. Optimize the travel order of activities within each day to minimize distance and maximize enjoyment.
-    3. Include "Hidden Gems" that are typical for digital nomads or modern adventurers, providing a unique local "vibe".
-    4. Descriptions must be vivid, premium, and evocative, using a storyteller's tone.
-    5. ALL text MUST be in VIETNAMESE.
-    6. For coordinates: give the most accurate estimated [latitude, longitude].
-    7. In the "transportation" section, specifically consider and include details about the preferred airlines and flight times if provided.
-    8. Logic: Plan each day realistically, considering travel time between spots and typical opening hours.
-    9. Cultural Insight: Mention local etiquette or specific tips for each attraction.
-    10. MANDATORY: The itinerary MUST be planned assuming the user is starting their journey from Hà Nội, Việt Nam. Include flight or transportation details from Hà Nội to the destination in the "transportation" section.
+    1. Focus on INDEPENDENT EXPERIENCE: The plan must be for someone traveling on their own without a tour operator. Include advice on self-booking, local transportation (Grab, rental scooters, public transit), and avoiding tourist traps.
+    2. Provide estimated Lat/Lng coordinates for EVERY location (activities, hotels, food spots).
+    3. Optimize the travel order of activities within each day to minimize distance and maximize enjoyment.
+    4. Include "Hidden Gems" that are typical for digital nomads or modern adventurers, providing a unique local "vibe".
+    5. Descriptions must be vivid, premium, and evocative, using a storyteller's tone.
+    6. ALL text MUST be in ${languageName}.
+    7. For coordinates: give the most accurate estimated [latitude, longitude].
+    8. In the "transportation" section, provide detailed info on HOW a traveler can get around the destination independently, including costs and booking tips.
+    9. Logic: Plan each day realistically, considering travel time between spots and typical opening hours.
+    10. Cultural Insight: Mention local etiquette or specific tips for each attraction.
     11. FOOD PREFERENCES: Strictly adhere to the dietary restrictions and preferred cuisines when suggesting food and cafes.
   `;
 

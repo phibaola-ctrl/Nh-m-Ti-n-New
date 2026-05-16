@@ -39,9 +39,10 @@ interface TravelMapProps {
   itinerary: TravelItinerary;
   activeDay?: number;
   onLocationSelect?: (location: any) => void;
+  isOffline?: boolean;
 }
 
-export default function TravelMap({ itinerary, activeDay = 1, onLocationSelect }: TravelMapProps) {
+export default function TravelMap({ itinerary, activeDay = 1, onLocationSelect, isOffline }: TravelMapProps) {
   const [darkMode, setDarkMode] = useState(false);
   const [routes, setRoutes] = useState<[number, number][][]>([]);
   const [allLocations, setAllLocations] = useState<any[]>([]);
@@ -167,13 +168,19 @@ export default function TravelMap({ itinerary, activeDay = 1, onLocationSelect }
         ))}
       </MapContainer>
       
-      {/* Map Empty State */}
-      {allLocations.length === 0 && (
+      {/* Map Empty State or Offline State */}
+      {(allLocations.length === 0 || isOffline) && (
         <div className="absolute inset-0 flex items-center justify-center bg-vibrant-cream/50 backdrop-blur-sm z-[2000]">
-          <div className="text-center p-8 bg-white border-4 border-vibrant-black shadow-[8px_8px_0px_#1a1a1a] rounded-3xl max-w-sm">
-            <MapIcon className="w-12 h-12 mx-auto mb-4 text-vibrant-orange animate-bounce" />
-            <h3 className="text-2xl font-display uppercase italic mb-2">Đang Đồng Bộ Atlas...</h3>
-            <p className="text-xs font-medium opacity-60 uppercase tracking-widest">Chuyển đổi tọa độ thành hành trình sử thi của bạn</p>
+          <div className="text-center p-8 bg-white border-4 border-vibrant-black shadow-[8px_8px_0px_#1a1a1a] rounded-3xl max-w-sm mx-6">
+            <MapIcon className="w-12 h-12 mx-auto mb-4 text-vibrant-orange" />
+            <h3 className="text-2xl font-display uppercase italic mb-2">
+              {isOffline ? 'Bản Đồ Ngoại Tuyến' : 'Đang Đồng Bộ Atlas...'}
+            </h3>
+            <p className="text-xs font-medium opacity-60 uppercase tracking-widest leading-relaxed">
+              {isOffline 
+                ? 'Dịch vụ bản đồ yêu cầu kết nối internet. Bạn vẫn có thể xem chi tiết tất cả các địa điểm trong danh sách bên cạnh.' 
+                : 'Chuyển đổi tọa độ thành hành trình sử thi của bạn'}
+            </p>
           </div>
         </div>
       )}

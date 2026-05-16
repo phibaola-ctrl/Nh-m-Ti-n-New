@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { useState, useMemo } from 'react';
-import { TravelItinerary, DayPlan, Activity, Recommendation } from '../types';
-import { MapPin, Clock, DollarSign, Lightbulb, Coffee, Hotel, Truck, Compass, Instagram, ChevronLeft, Sparkles, Filter, X, Download, Printer, Banknote, Star, Quote } from 'lucide-react';
+import { TravelItinerary, DayPlan, Activity, Recommendation, Review } from '../types';
+import { MapPin, Clock, DollarSign, Lightbulb, Coffee, ChevronLeft, Sparkles, X, Download, Printer, Banknote, Star, Quote, Compass, Send, Wind } from 'lucide-react';
 import TravelMap from './Map/TravelMap';
+import { translations, Language } from '../lib/translations';
 
 const EXCHANGE_RATES: Record<string, number> = {
   'USD': 25400, '$': 25400,
@@ -22,36 +23,30 @@ const EXCHANGE_RATES: Record<string, number> = {
   'PHP': 440,
 };
 
-const convertToVND = (costStr: string) => {
-  if (!costStr) return 'Miễn phí';
+const convertToVND = (costStr: string, freeText: string) => {
+  if (!costStr) return freeText;
   const lower = costStr.toLowerCase();
   
-  // Quick check for free/zero
   if (
     lower.includes('miễn phí') || 
     lower.includes('free') || 
     (lower.match(/\b0\b/) && costStr.length < 10)
   ) {
-    return 'Miễn phí';
+    return freeText;
   }
   
   const upperCost = costStr.toUpperCase();
-  
-  // Sort keys by length descending to match longer strings first (e.g. 'THB' before 'B')
   const keys = Object.keys(EXCHANGE_RATES).sort((a, b) => b.length - a.length);
   
   let selectedRate = 0;
-  let detectedSymbol = '';
 
   for (const symbol of keys) {
     if (upperCost.includes(symbol)) {
       selectedRate = EXCHANGE_RATES[symbol];
-      detectedSymbol = symbol;
       break;
     }
   }
   
-  // If no international rate found, or already explicitly in VND, return as is
   if (selectedRate === 0 || upperCost.includes('VND') || upperCost.includes('VNĐ')) {
     return costStr;
   }
@@ -64,15 +59,8 @@ const convertToVND = (costStr: string) => {
     }).format(val);
   };
 
-  // Improved regex: handles numbers with commas/dots as separators
-  // Matches "1,200", "50.5", "1000", etc.
   let result = costStr;
-  
-  // Replacement logic: Find numbers and replace with converted VND
-  // We use a regex that looks specifically for patterns that look like prices
   result = result.replace(/(\d[\d,.]*)/g, (match) => {
-    // Clean the number string for parsing
-    // If it ends with a dot or comma, we should keep that punctuation as part of the text
     let punctuation = '';
     let cleanMatch = match;
     if (match.endsWith('.') || match.endsWith(',')) {
@@ -80,49 +68,97 @@ const convertToVND = (costStr: string) => {
       cleanMatch = match.slice(0, -1);
     }
 
-    // Heuristic: if match is just a small number like 1-31, it might be a date part, but in costStr it's unlikely
-    // We replace it if it feels like a value
     const valStr = cleanMatch.replace(/,/g, '');
     const num = parseFloat(valStr);
     
     if (isNaN(num)) return match;
-    
-    // Only convert if it's not a year (very loose check)
-    if (num > 1900 && num < 2100 && !costStr.includes('/')) {
-       // Might be a year, potentially skip? For now, we assume all numbers in costStr are prices.
-    }
-
     return formatVND(num * selectedRate) + punctuation;
   });
 
-  // Cleanup original symbols and currency codes
-  // We escape symbols for regex safety
   for (const symbol of keys) {
     const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`\\b${escaped}\\b|${escaped}`, 'gi');
     result = result.replace(regex, '');
   }
 
-  // Final cleanup of extra spaces or leftover artifacts
   result = result.replace(/\s+/g, ' ').trim();
-  
   return result || costStr;
 };
 
 interface ItineraryDisplayProps {
   itinerary: TravelItinerary;
   onBack: () => void;
+  language: Language;
+  isOffline?: boolean;
 }
 
 type ActivityTypeFilter = 'All' | 'Morning' | 'Afternoon' | 'Evening' | 'Nightlife';
 
-export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplayProps) {
+export default function ItineraryDisplay({ itinerary, onBack, language, isOffline }: ItineraryDisplayProps) {
+  const t = useMemo(() => translations[language], [language]);
   const [activeDay, setActiveDay] = useState(1);
   const [activeType, setActiveType] = useState<ActivityTypeFilter>('All');
   const [selectedLocation, setSelectedLocation] = useState<any | null>(null);
   const [isVND, setIsVND] = useState(false);
 
-  const displayCost = (cost: string) => isVND ? convertToVND(cost) : cost;
+  // Review State
+  const [localReviews, setLocalReviews] = useState<Record<string, Review[]>>({});
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Reset review form when location changes
+  useMemo(() => {
+    setShowReviewForm(false);
+    setNewComment('');
+    setNewRating(5);
+  }, [selectedLocation]);
+
+  const displayCost = (cost: string) => isVND ? convertToVND(cost, t.free) : cost;
+
+  // Combining hardcoded reviews with local reviews
+  const getLocationReviews = (locationName: string): Review[] => {
+    const hardcoded: Review[] = [
+      { 
+        userName: language === 'vi' ? "Minh Anh" : "Alex Smith", 
+        avatar: language === 'vi' ? "MA" : "AS",
+        rating: 5, 
+        comment: language === 'vi' ? "Địa điểm tuyệt vời! Không gian cực kỳ ấn tượng và phục vụ rất chu đáo." : "Amazing spot! The atmosphere is impressive and service is top-notch.",
+        date: language === 'vi' ? "2 tuần trước" : "2 weeks ago"
+      }
+    ];
+    const local = localReviews[locationName] || [];
+    return [...local, ...hardcoded];
+  };
+
+  const handleReviewSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim() || !selectedLocation) return;
+
+    setIsSubmittingReview(true);
+    
+    // Simulate delay
+    setTimeout(() => {
+      const review: Review = {
+        userName: language === 'vi' ? "Người dùng" : "Guest User",
+        avatar: language === 'vi' ? "ND" : "GU",
+        rating: newRating,
+        comment: newComment,
+        date: t.justNow
+      };
+
+      setLocalReviews(prev => ({
+        ...prev,
+        [selectedLocation.name]: [review, ...(prev[selectedLocation.name] || [])]
+      }));
+
+      setNewComment('');
+      setNewRating(5);
+      setShowReviewForm(false);
+      setIsSubmittingReview(false);
+    }, 600);
+  };
 
   const filteredDays = useMemo(() => {
     return itinerary.days.map(day => ({
@@ -137,9 +173,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
   const handleExportJSON = () => {
     const dataStr = JSON.stringify(itinerary, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `Lich_trinh_${itinerary.overview.destination.replace(/\s+/g, '_')}.json`;
-    
+    const exportFileDefaultName = `Itinerary_${itinerary.overview.destination.replace(/\s+/g, '_')}.json`;
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
@@ -176,7 +210,15 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-display uppercase tracking-tight">{itinerary.overview.destination}</h1>
+              <h1 className="text-2xl font-display uppercase tracking-tight flex items-center gap-3">
+                {itinerary.overview.destination}
+                {!isOffline && (
+                  <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 bg-vibrant-green/10 border border-vibrant-green/20 rounded-md">
+                    <div className="w-1.5 h-1.5 bg-vibrant-green rounded-full animate-pulse" />
+                    <span className="text-[8px] font-black uppercase text-vibrant-green tracking-widest">{t.availableOffline}</span>
+                  </div>
+                )}
+              </h1>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">
                 {itinerary.overview.duration} • {itinerary.overview.travelStyle}
               </p>
@@ -194,7 +236,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                     : 'bg-white border-vibrant-black/10 hover:border-vibrant-black'
                 }`}
               >
-                Ngày {d.day}
+                {t.daysSuffix} {d.day}
               </button>
             ))}
           </div>
@@ -202,22 +244,22 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setIsVND(!isVND)}
-              title={isVND ? "Xem giá gốc" : "Đổi sang VNĐ"}
+              title={isVND ? "Original rates" : "Switch to VND"}
               className={`flex items-center gap-2 px-4 py-3 border-2 border-vibrant-black rounded-xl transition-all shadow-[2px_2px_0px_#1a1a1a] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 ${isVND ? 'bg-vibrant-green text-white' : 'bg-white text-vibrant-black'}`}
             >
               <Banknote className="w-5 h-5" />
-              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isVND ? 'VNĐ' : 'Gốc'}</span>
+              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isVND ? 'VNĐ' : t.originalPrice}</span>
             </button>
             <button 
               onClick={handleExportJSON}
-              title="Tải xuống JSON"
+              title="Download JSON"
               className="p-3 bg-vibrant-yellow border-2 border-vibrant-black rounded-xl transition-all shadow-[2px_2px_0px_#1a1a1a] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"
             >
               <Download className="w-5 h-5" />
             </button>
             <button 
               onClick={handlePrint}
-              title="Lưu PDF / In"
+              title="Print / Save PDF"
               className="p-3 bg-white border-2 border-vibrant-black rounded-xl transition-all shadow-[2px_2px_0px_#1a1a1a] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"
             >
               <Printer className="w-5 h-5" />
@@ -226,14 +268,24 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
         </div>
       </header>
 
+      {/* OFFLINE BANNER */}
+      {isOffline && (
+        <div className="fixed top-24 inset-x-0 z-[90] px-6 no-print">
+          <div className="max-w-4xl mx-auto bg-vibrant-black text-white p-3 rounded-xl border-2 border-white/20 shadow-lg flex items-center justify-center gap-3 animate-pulse">
+            <Wind className="w-4 h-4 text-vibrant-orange" />
+            <span className="text-[10px] font-black uppercase tracking-widest">{t.offlineStatus}</span>
+          </div>
+        </div>
+      )}
+
       {/* MAIN CONTENT GRID */}
       <main className="flex flex-col lg:flex-row h-screen pt-24">
         
-        {/* LEFT COLUMN: ITINERARY FLOW (SCROLLABLE) */}
+        {/* LEFT COLUMN: ITINERARY FLOW */}
         <section className="w-full lg:w-[40%] xl:w-[35%] h-full overflow-y-auto p-6 space-y-12 pb-32 no-scrollbar printable-content">
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-               <h2 className="text-3xl font-display uppercase tracking-widest bg-vibrant-yellow px-4 py-2 border-2 border-vibrant-black rotate-[-1deg] shadow-[4px_4px_0px_#1a1a1a]">Kế Hoạch Tổng Thể</h2>
+               <h2 className="text-3xl font-display uppercase tracking-widest bg-vibrant-yellow px-4 py-2 border-2 border-vibrant-black rotate-[-1deg] shadow-[4px_4px_0px_#1a1a1a]">{t.masterPlan}</h2>
             </div>
 
             {/* FILTERS */}
@@ -248,7 +300,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                       : 'bg-white border-vibrant-black/10 hover:border-vibrant-black hover:shadow-sm'
                   }`}
                 >
-                  {type === 'All' ? 'Tất cả' : type === 'Morning' ? 'Sáng' : type === 'Afternoon' ? 'Chiều' : type === 'Evening' ? 'Tối' : 'Đêm'}
+                  {type === 'All' ? t.filterAll : type === 'Morning' ? t.filterMorning : type === 'Afternoon' ? t.filterAfternoon : type === 'Evening' ? t.filterEvening : t.filterNightlife}
                 </button>
               ))}
             </div>
@@ -263,6 +315,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                   onSelect={setSelectedLocation}
                   isVND={isVND}
                   displayCost={displayCost}
+                  t={t}
                 />
               </div>
             ))}
@@ -271,7 +324,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
           {/* RECOMMENDATIONS */}
           <div className="pt-12 border-t-2 border-vibrant-black/5 space-y-8 print:break-inside-avoid">
              <div className="brutalist-card p-6 bg-vibrant-green text-white">
-                <h3 className="text-2xl font-display uppercase mb-4 italic">Điểm nóng <span className="text-vibrant-yellow font-sans">Ẩm thực</span></h3>
+                <h3 className="text-2xl font-display uppercase mb-4 italic">{t.foodCafes}</h3>
                 <div className="space-y-4 print:grid print:grid-cols-2 print:gap-4">
                   {itinerary.foodAndCafes.map(food => (
                     <div 
@@ -298,18 +351,19 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
           </div>
         </section>
 
-        {/* RIGHT COLUMN: INTERACTIVE MAP (STICKY) */}
+        {/* RIGHT COLUMN: INTERACTIVE MAP */}
         <section className="w-full lg:w-[60%] xl:w-[65%] h-[50vh] lg:h-full p-6 relative no-print">
           <TravelMap 
             itinerary={itinerary} 
             activeDay={activeDay} 
             onLocationSelect={setSelectedLocation}
+            isOffline={isOffline}
           />
         </section>
 
       </main>
 
-      {/* LOCATION DETAIL MODAL / DRAWER */}
+      {/* LOCATION DETAIL MODAL */}
       <AnimatePresence>
         {selectedLocation && (
           <motion.div 
@@ -335,7 +389,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-vibrant-black via-vibrant-black/40 to-transparent p-8">
                   <span className="inline-block px-3 py-1 bg-vibrant-orange text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full mb-3 shadow-[2px_2px_0px_#1a1a1a]">
-                    {selectedLocation.type || 'Trải Nghiệm'}
+                    {selectedLocation.type || t.explore}
                   </span>
                   <h2 className="text-4xl lg:text-5xl font-display uppercase text-white leading-none tracking-tighter drop-shadow-lg">
                     {selectedLocation.name}
@@ -347,10 +401,10 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
               <div className="w-full md:w-1/2 p-6 md:p-10 overflow-y-auto no-scrollbar space-y-8 bg-vibrant-cream/30">
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-vibrant-black/40">Thông tin chi tiết</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-vibrant-black/40">{t.details}</p>
                     <div className="flex items-center gap-2 text-vibrant-orange font-display text-xl">
                       <Sparkles className="w-5 h-5 shine" />
-                      <span>{selectedLocation.location || 'Điểm đến đề xuất'}</span>
+                      <span>{selectedLocation.location || 'Destination suggested'}</span>
                     </div>
                   </div>
                   <button 
@@ -365,7 +419,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                   {/* Story / Description */}
                   <div className="space-y-3">
                     <p className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2 text-vibrant-black">
-                      <Compass className="w-4 h-4 text-vibrant-orange" /> Câu Chuyện
+                      <Compass className="w-4 h-4 text-vibrant-orange" /> {t.story}
                     </p>
                     <p className="text-sm leading-relaxed text-vibrant-black/80 font-medium">
                       {selectedLocation.description}
@@ -377,16 +431,16 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                     <div className="bg-white border-2 border-vibrant-black/10 p-4 rounded-2xl">
                       <div className="flex items-center gap-2 mb-1 opacity-50">
                         <DollarSign className="w-3 h-3" />
-                        <p className="text-[8px] font-black uppercase">Chi Phí</p>
+                        <p className="text-[8px] font-black uppercase">{t.cost}</p>
                       </div>
-                      <p className="text-sm font-black text-vibrant-black">{displayCost(selectedLocation.cost || selectedLocation.priceRange || 'Miễn Phí')}</p>
+                      <p className="text-sm font-black text-vibrant-black">{displayCost(selectedLocation.cost || selectedLocation.priceRange || t.free)}</p>
                     </div>
                     <div className="bg-white border-2 border-vibrant-black/10 p-4 rounded-2xl">
                       <div className="flex items-center gap-2 mb-1 opacity-50">
                         <Clock className="w-3 h-3" />
-                        <p className="text-[8px] font-black uppercase">Thời Lượng</p>
+                        <p className="text-[8px] font-black uppercase">{t.locationDuration}</p>
                       </div>
-                      <p className="text-sm font-black text-vibrant-black">{selectedLocation.duration || 'Linh Hoạt'}</p>
+                      <p className="text-sm font-black text-vibrant-black">{selectedLocation.duration || 'Flexible'}</p>
                     </div>
                   </div>
 
@@ -397,7 +451,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                         <Lightbulb className="w-12 h-12 text-vibrant-orange" />
                       </div>
                       <p className="text-[10px] font-black uppercase text-vibrant-orange mb-2 flex items-center gap-2">
-                        {selectedLocation.tips ? 'Mẹo Du Mục' : 'Ưu Điểm Nổi Bật'}
+                        {selectedLocation.tips ? t.nomadTips : t.keyHighlights}
                       </p>
                       <p className="text-xs italic leading-relaxed text-vibrant-black/90 font-bold">
                         {selectedLocation.tips || selectedLocation.advantages}
@@ -409,7 +463,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                   {selectedLocation.signatureDishes && (
                     <div className="space-y-3">
                       <p className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2 text-vibrant-black">
-                        <Coffee className="w-4 h-4 text-vibrant-orange" /> Món Đặc Trưng
+                        <Coffee className="w-4 h-4 text-vibrant-orange" /> {t.signatureDishes}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {selectedLocation.signatureDishes.map((dish: string) => (
@@ -425,7 +479,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                   <div className="space-y-6 pt-6 border-t-2 border-vibrant-black/5">
                     <div className="flex items-center justify-between">
                       <p className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2 text-vibrant-black">
-                        <Star className="w-4 h-4 text-vibrant-yellow fill-vibrant-yellow" /> Đánh giá & Nhận xét
+                        <Star className="w-4 h-4 text-vibrant-yellow fill-vibrant-yellow" /> {t.reviews}
                       </p>
                       <div className="flex items-center gap-1">
                         <span className="text-xl font-display text-vibrant-black">4.8</span>
@@ -433,7 +487,6 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                       </div>
                     </div>
 
-                    {/* Rating Breakdown */}
                     <div className="grid grid-cols-1 gap-2 bg-vibrant-cream/50 p-4 rounded-2xl border-2 border-vibrant-black/5">
                       {[5, 4, 3, 2, 1].map((star) => (
                         <div key={star} className="flex items-center gap-3">
@@ -454,22 +507,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                     </div>
 
                     <div className="space-y-4">
-                      {[
-                        { 
-                          user: "Minh Anh", 
-                          avatar: "MA",
-                          rating: 5, 
-                          comment: "Địa điểm tuyệt vời! Không gian cực kỳ ấn tượng và phục vụ rất chu đáo. Chắc chắn sẽ quay lại.",
-                          date: "2 tuần trước"
-                        },
-                        { 
-                          user: "Hoàng Long", 
-                          avatar: "HL",
-                          rating: 4, 
-                          comment: "Trải nghiệm rất tốt, tuy nhiên hơi đông vào cuối tuần. Gợi ý nên đi vào ngày thường.",
-                          date: "1 tháng trước"
-                        }
-                      ].map((review, idx) => (
+                      {getLocationReviews(selectedLocation.name).map((review, idx) => (
                         <div key={idx} className="bg-white border-2 border-vibrant-black/10 p-5 rounded-2xl space-y-3 shadow-sm hover:border-vibrant-black/20 transition-colors">
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-3">
@@ -477,7 +515,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                                 {review.avatar}
                               </div>
                               <div>
-                                <p className="text-sm font-black text-vibrant-black mb-0.5">{review.user}</p>
+                                <p className="text-sm font-black text-vibrant-black mb-0.5">{review.userName}</p>
                                 <div className="flex gap-1">
                                   {[...Array(5)].map((_, i) => (
                                     <Star key={i} className={`w-3 h-3 ${i < review.rating ? 'text-vibrant-yellow fill-vibrant-yellow' : 'text-vibrant-black/10'}`} />
@@ -497,9 +535,64 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                       ))}
                     </div>
 
-                    <button className="w-full py-3 border-2 border-dashed border-vibrant-black/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-vibrant-black/40 hover:border-vibrant-orange hover:text-vibrant-orange hover:bg-vibrant-orange/5 transition-all">
-                      Để lại đánh giá của bạn
-                    </button>
+                    <AnimatePresence>
+                      {showReviewForm ? (
+                        <motion.form 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          onSubmit={handleReviewSubmit}
+                          className="bg-vibrant-cream/50 border-2 border-vibrant-black border-dashed rounded-2xl p-6 space-y-4 overflow-hidden"
+                        >
+                          <div className="flex justify-between items-center">
+                            <p className="text-xs font-black uppercase tracking-widest">{t.rating}</p>
+                            <div className="flex gap-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  onClick={() => setNewRating(star)}
+                                  className="transition-transform active:scale-90"
+                                >
+                                  <Star className={`w-6 h-6 ${star <= newRating ? 'text-vibrant-yellow fill-vibrant-yellow' : 'text-vibrant-black/10'}`} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <textarea
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            placeholder={t.reviewPlaceholder}
+                            className="w-full bg-white border-2 border-vibrant-black/10 rounded-xl p-4 text-sm font-medium focus:border-vibrant-orange focus:outline-none transition-colors h-24 resize-none"
+                            required
+                          />
+                          <div className="flex gap-2">
+                             <button
+                                type="button"
+                                onClick={() => setShowReviewForm(false)}
+                                className="flex-1 py-3 border-2 border-vibrant-black/10 rounded-xl text-[10px] font-black uppercase hover:bg-white transition-colors"
+                             >
+                               {t.cancel}
+                             </button>
+                             <button
+                                type="submit"
+                                disabled={isSubmittingReview}
+                                className="flex-1 py-3 bg-vibrant-black text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 hover:bg-vibrant-orange transition-colors disabled:opacity-50"
+                             >
+                               {isSubmittingReview ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                               {t.submitReview}
+                             </button>
+                          </div>
+                        </motion.form>
+                      ) : (
+                        <button 
+                          onClick={() => setShowReviewForm(true)}
+                          className="w-full py-3 border-2 border-dashed border-vibrant-black/20 rounded-2xl text-[10px] font-black uppercase tracking-widest text-vibrant-black/40 hover:border-vibrant-orange hover:text-vibrant-orange hover:bg-vibrant-orange/5 transition-all"
+                        >
+                          {t.leaveReview}
+                        </button>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   <button 
@@ -510,7 +603,7 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
                     }}
                   >
                     <MapPin className="w-5 h-5 text-vibrant-orange" />
-                    Mở Trong Bản Đồ
+                    {t.openInMaps}
                   </button>
                 </div>
               </div>
@@ -523,16 +616,16 @@ export default function ItineraryDisplay({ itinerary, onBack }: ItineraryDisplay
   );
 }
 
-function DayBlock({ day, onSelect, isVND, displayCost }: { day: DayPlan, onSelect: (loc: any) => void, isVND: boolean, displayCost: (c: string) => string }) {
+function DayBlock({ day, onSelect, isVND, displayCost, t }: { day: DayPlan, onSelect: (loc: any) => void, isVND: boolean, displayCost: (c: string) => string, t: any }) {
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-4">
-        <span className="text-6xl font-display text-vibrant-black/10 select-none">0{day.day}</span>
+        <span className="text-6xl font-display text-vibrant-black/10 select-none">{day.day.toString().padStart(2, '0')}</span>
         <h3 className="text-2xl font-black uppercase tracking-widest items-center flex gap-3">
           <div className="w-8 h-8 rounded-full bg-vibrant-orange flex items-center justify-center text-white text-xs shadow-[2px_2px_0px_#1a1a1a]">
             {day.day}
           </div>
-          Hành trình Ngày {day.day}
+          {t.dayItinerary} {day.day}
         </h3>
       </div>
 
@@ -545,7 +638,7 @@ function DayBlock({ day, onSelect, isVND, displayCost }: { day: DayPlan, onSelec
           >
             <div className="absolute -left-[27px] top-4 w-3 h-3 bg-white border-2 border-vibrant-black rounded-full group-hover:bg-vibrant-orange transition-colors" />
             
-            <div className="flex gap-6">
+            <div className="flex flex-col sm:flex-row gap-6">
               <div className="w-24 h-24 shrink-0 rounded-2xl overflow-hidden border-2 border-vibrant-black shadow-[4px_4px_0px_#1a1a1a] group-hover:shadow-none group-hover:translate-x-1 group-hover:translate-y-1 transition-all">
                 <img src={activity.imageUrl} alt={activity.name} className="w-full h-full object-cover" />
               </div>
@@ -560,7 +653,7 @@ function DayBlock({ day, onSelect, isVND, displayCost }: { day: DayPlan, onSelec
                      {displayCost(activity.cost)}
                    </span>
                    <span className="text-[10px] font-bold text-vibrant-black flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                     Khám phá <ChevronLeft className="w-3 h-3 rotate-180" />
+                     {t.explore} <ChevronLeft className="w-3 h-3 rotate-180" />
                    </span>
                 </div>
               </div>
@@ -568,123 +661,6 @@ function DayBlock({ day, onSelect, isVND, displayCost }: { day: DayPlan, onSelec
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-
-function OverviewStat({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2 text-[10px] uppercase font-semibold tracking-widest opacity-40">
-        {icon} {label}
-      </div>
-      <div className="text-lg font-medium">{value}</div>
-    </div>
-  );
-}
-
-function DaySection({ day, index }: { day: DayPlan, index: number }) {
-  return (
-    <div className="relative">
-      <div className="absolute -left-16 top-0 hidden lg:block">
-        <h3 className="text-9xl font-serif italic text-white/5 select-none">{day.day.toString().padStart(2, '0')}</h3>
-      </div>
-      
-      <div className="border-b border-white/10 pb-16">
-        <div className="flex items-baseline gap-4 mb-12">
-          <span className="text-viet-gold font-display text-4xl">DAY {day.day}</span>
-          <span className="text-white/40 text-xl font-light">/ {day.date}</span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
-          {day.activities.map((activity, aIdx) => (
-             <ActivityCard key={activity.name} activity={activity} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ActivityCard({ activity }: { activity: Activity }) {
-  return (
-    <motion.div
-      whileHover={{ y: -10 }}
-      className="space-y-6 group"
-    >
-      <div className="relative aspect-[3/4] overflow-hidden rounded-3xl">
-        <img
-          src={activity.imageUrl}
-          alt={activity.name}
-          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 hover:scale-105"
-          referrerPolicy="no-referrer"
-        />
-        <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full text-[10px] uppercase font-bold tracking-widest">
-          {activity.type}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <h4 className="text-2xl font-serif italic tracking-tight group-hover:text-viet-gold transition-colors">{activity.name}</h4>
-        <p className="text-white/60 text-sm leading-relaxed">{activity.description}</p>
-        
-        <div className="grid grid-cols-2 gap-4 text-[10px] uppercase tracking-widest font-semibold pt-4 border-t border-white/5">
-          <div className="flex items-center gap-2 opacity-50"><Clock className="w-3 h-3" /> {activity.duration}</div>
-          <div className="flex items-center gap-2 opacity-50"><DollarSign className="w-3 h-3" /> {activity.cost}</div>
-          <div className="flex items-center gap-2 opacity-50"><MapPin className="w-3 h-3" /> {activity.visitTime}</div>
-          <div className="flex items-center gap-2 opacity-100 text-viet-gold"><Lightbulb className="w-3 h-3" /> Tip Included</div>
-        </div>
-
-        <div className="bg-white/5 p-4 rounded-xl text-xs text-white/40 leading-relaxed border border-white/5">
-          <span className="text-white/80 block mb-1 uppercase tracking-tighter font-bold">Pro Tip:</span>
-          {activity.tips}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function RecommendationCard({ item, compact }: { item: Recommendation, compact?: boolean }) {
-  return (
-    <div className="group space-y-4">
-      <div className={`relative ${compact ? 'aspect-square' : 'aspect-video'} overflow-hidden rounded-3xl`}>
-        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 p-6">
-           {item.priceRange && <div className="text-xs font-bold text-viet-gold uppercase mb-1">{item.priceRange}</div>}
-           <h4 className="text-2xl font-display uppercase">{item.name}</h4>
-        </div>
-      </div>
-      <div className="px-2 space-y-3">
-        <p className="text-sm opacity-60 italic">{item.description}</p>
-        {item.advantages && (
-          <div className="flex gap-2 items-center text-[10px] uppercase font-bold tracking-widest text-viet-gold">
-            <Sparkles className="w-3 h-3" /> {item.advantages}
-          </div>
-        )}
-        {item.signatureDishes && (
-          <div className="flex flex-wrap gap-2 pt-2">
-            {item.signatureDishes.map(dish => (
-              <span key={dish} className="bg-white/10 px-2 py-1 rounded text-[10px] font-mono opacity-60">{dish}</span>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({ title, subtitle, icon, variant = 'light' }: { title: string, subtitle: string, icon: React.ReactNode, variant?: 'light' | 'dark' }) {
-  const colorClass = variant === 'dark' ? 'text-black' : 'text-white';
-  const subColorClass = variant === 'dark' ? 'text-black/60' : 'text-white/60';
-
-  return (
-    <div className="container mx-auto px-6 mb-12">
-      <div className="flex items-center gap-4 mb-4">
-        {icon}
-        <h2 className={`text-4xl font-display uppercase tracking-widest ${colorClass}`}>{title}</h2>
-      </div>
-      <p className={`text-xl font-light italic ${subColorClass}`}>{subtitle}</p>
     </div>
   );
 }

@@ -59,3 +59,11 @@ export interface ChatMessage {
   role: ChatRole;
   text: string;
 }
+
+export interface Review {
+  userName: string;
+  avatar: string;
+  rating: number;
+  comment: string;
+  date: string;
+}

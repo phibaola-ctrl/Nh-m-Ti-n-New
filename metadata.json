@@ -1,8 +1,10 @@
 {
-  "name": "NomadMap AI",
-  "description": "Kế hoạch du lịch AI cao cấp sử dụng công nghệ bản đồ miễn phí và mã nguồn mở như Leaflet và OpenStreetMap.",
+  "name": "next step AI",
+  "description": "Lịch trình du lịch thông minh với AI cao cấp, giúp bạn khám phá thế giới một cách tinh tế và hiện đại.",
   "requestFramePermissions": [
     "geolocation"
   ],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
